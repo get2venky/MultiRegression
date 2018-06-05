@@ -1,0 +1,275 @@
+---
+title: "Multiple Regression using mtcars dataset"
+author: "Venkatesh Vedam"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Summary
+
+Multiple regression is an extension of linear regression. While there are several more powerful 
+algorithms than multi regression available to the data scientist, this is often useful during exploratory analysis and also for establishing a baseline for the model accuracy. As compared to other advanced algorithms, linear/multiple regression have the advantage of being simple to explain. 
+
+In this exercise, we explore multiple regression using the mtcars dataset as we answer two questions:
+
+1) Is an automatic or manual transmission better for MPG ?
+2) How different (quantitatively) is the MPG difference between automatic and manual transmissions?
+
+We start off with a layman approach of taking a simple mean of mpg by transmission type and
+found that manual transmission is better. We follow this up with a two sample, one tailed 
+t-test which confirms that the difference between the two means is indeed statistically signficant, thus conclusively answering the first question above in favor of manual transmission. 
+
+Next we turn our attention to model building for answering the second question above.
+Our base model involves of modeling mpg with only am as the predictor, which explains 
+34% of the variation in the response variable. Subsequently we use the bestglm package to figure
+out the best subset of variables for the model, which turns out to be wt,qsec and am. Essentially we pick a combination of categorical and continuous variables as predictors. 
+
+The final model thus created could explain 83% of the variation in mpg. As expected wt (weight) is negatively correlated with mpg whereas qsec and am (manual option) yield positive coefficients. 
+
+
+#Approach
+
+Step 1
+------
+
+As the first step, we load the required libraries and examine the dataset
+
+```{r 1, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(GGally)
+library(bestglm)
+
+str(mtcars)
+
+```
+
+The R help menu gives addnl description about each column:
+
+[, 1]	 mpg	 Miles/(US) gallon
+[, 2]	 cyl	 Number of cylinders
+[, 3]	 disp	 Displacement (cu.in.)
+[, 4]	 hp	 Gross horsepower
+[, 5]	 drat	 Rear axle ratio
+[, 6]	 wt	 Weight (1000 lbs)
+[, 7]	 qsec	 1/4 mile time
+[, 8]	 vs	 V/S
+[, 9]	 am	 Transmission (0 = automatic, 1 = manual)
+[,10]	 gear	 Number of forward gears
+[,11]	 carb	 Number of carburetors
+
+
+We note that the categorical columns are also stored as numbers. It's a good idea to convert these to factors before moving forward:
+
+``` {r 2, warning=FALSE, message=FALSE}
+cols <- c("cyl","vs", "am", "gear", "carb")
+mtcars[cols] <- lapply(mtcars[cols], factor)
+str(mtcars)
+
+```
+
+Whever we start working on a new dataset, it helps to examine the relationship between the target (mpg) and the different response variables (remaining columns in the mpg dataset). In addition, we also look at the relationship between differnt pairs of response variables.While pairs in base R works here, we will use ggpairs since it's more informative. A truncated form of the output(for better clarity)is captured in Figure 1 below
+
+Step 2
+------
+At this point, let us examine the question as above - "Is an automatic or manual transmission better for MPG ?"
+
+Before getting into model building, we would want to examine if there is any difference between the mean of the MPG for automatic transmission and manual transmission. Hence we will proceed with calculating the means afer grouping the records by the am column. 
+
+``` {r 3, warning = FALSE}
+ams <- group_by(mtcars, am)
+as.data.frame(summarize(ams, mpgmean = mean(mpg)))
+
+```
+
+The means are also depicted graphically in Figure 2.
+We see that the mean mpg for manual transmission is about 42% higher as compared to automatic transmission.
+
+
+However, the mere difference in the means is not sufficient to conclusively answer the first question on whether manual or automatic transmission is better. This is where we will turn to hypothesis testing.Since the sample size here is small (32), we will turn to t-test, specifically the one-tailed t-test since the question here boils down to: Is mpg for manual transmission > mpg for automatic transmission and is the difference statistically significant? So we will use a two sample, one-tailed t-test here to check if there is a significant difference between the group means. First, we subset mpg by am and create two different vectors for manual and automatic
+
+```{r 4, warning = FALSE}
+data.auto = subset(mtcars, am == "0")[,c(1)]
+data.manual = subset(mtcars, am == "1")[,c(1)]
+```
+
+We then invoke the t.test function. The parameters we choose are important:
+=> var.equal is set to FALSE, implying unequal variances in the two vectors. In this case R uses
+Welch t.test which is supposed to be better.
+=> alternative = "greater"" imples a one-tailed test, i.e. the first group to the t.test function (manaul in this case) being greater than the second group (auto).
+
+```{r 5, warning = FALSE}
+t.test(data.manual,data.auto,var.equal=FALSE, alternative = "greater")
+```
+
+As we can see from the results, the difference in the two means is significant at p = 0.05
+This means we can reject the null hypothesis which says that there is no significant difference
+in the mpg means for manual and auto, thus establishing that manual transmission indeed gives a
+better mpg.
+
+Step 3
+-------
+Having established that manual transmission is better for mpg, let us tackle the second question:
+
+"Quantify the MPG difference between automatic and manual transmissions"
+
+This is where we will use multiple linear regression to build different models and choose the best one.
+Our first thought would be to build a model using only the predictor variable in question i.e. am
+
+``` {r 6, warning = FALSE}
+model.mtcars1 <- lm(mpg ~ am, data=mtcars)
+summary(model.mtcars1)
+```
+
+Model interpretation - 
+-The intercept represents the baseline (automatic transmission).
+Essentially it signifies that for automatic transmission, the mean of the mpg will be about 
+17.14.
+-Similary am1 represents manual transmission relative to the baseline. Hence we can expect
+a mean mpg of 17.14 + 7.24 = 24.38 for manual transmission.
+-The adjusted R-squared is about 0.34 which means the model is able to explain about 34%
+of the variance in the response variable.
+
+The 95% confidence interval for Beta1(manual transmission) is the estimate +/- 2 standard errors
+
+```{r 7, warning=FALSE}
+co = coef(summary(model.mtcars1))
+ce1=co[2,1] + 2*(co[2,2])
+ce2=co[2,1] - 2*(co[2,2])
+ce1
+ce2
+```
+
+As we can see, the 95% confidence limits are [3.7, 10.8] for Beta1 
+
+Step 4
+--------
+Having built the elementary model with only am as the response variable, let us build a complete
+model now including the other relevant response variables. 
+
+We start by building a model including all response variables available and see if we can better the
+34% R-squared which we got by including only the am variable.
+
+```{r 8, warning=FALSE}
+
+model.mtcars2 <- lm(mpg ~ ., data=mtcars)
+summary(model.mtcars2)
+
+```
+
+As is evident from the output, the adj R-squared has improved to 0.8165 and the model
+p-value is significant. However,none of the independent predictors are signficant.
+Even the wt variable which is otherwise higly correlated with mpg is not signficant
+with a p-value of 0.0525. So no way that this can be the final model.
+
+To improve the model by removing non-informative variables, we have a few options (and these are not the only ones):
+
+1) Do a backward elimination from the all predictor model as above. This involves removing the 
+least signficant predictor in the current model (gear in the one above), rebuilding the model
+and repeating the process till the remaining predictors are signficant. While this is a straightforward
+process, when the original data has a high no of features. Also, we need to be mindful of the interaction
+between the predictors so dropping a predictor based on low signficance in one iteration may not always 
+be right. 
+2) We can examine the correlation between the response and the different predictor variables and pick 
+the highest correlated ones. From these we can clean up predictors that are correlated between each other,
+retaining only one. While this approach will give a fairly good model quickly, it's still not a foolproof
+solution since a relatively lower correlation for a predictor variable (wrt response variable) may not be
+reason enough for the predictor to become insignificant in the final model
+3) After trying out the above two approaches and not being satisfied with the results, I finally settled
+on using the bestglm package to pick out the best subset of predictors as below
+
+```{r 9, warning=FALSE, message=FALSE}
+
+#The response variable needs to be called 'y' for using in bestglm
+mtcars.for.bestglm <- within(mtcars, {
+  y    <- mpg         # mpg into y
+  mpg  <- NULL        # Delete mpg
+})
+
+res.bestglm <-
+  bestglm(Xy = mtcars.for.bestglm,
+          #family =  , # not reqd for muliple regression
+          IC = "AIC",                 # Information criteria
+          method = "exhaustive")
+
+res.bestglm$BestModels
+```
+
+So we will pick wt, qsec and am as our final predictors as suggested by bestglm.
+Please note in an actual project, the choice of the final predictors will also be driven
+by the needs of the business, not necessarily by what the program suggests. 
+
+```{r 10, warning=FALSE}
+model.mtcars3 <- lm(mpg ~ wt+qsec+am, data=mtcars)
+summary(model.mtcars3)
+```
+
+We see that the adj r-squared has improved to 0.8336 and the 3 predictors are significant
+at p = 0.05
+
+Let us look at the coefficients closely and additionally calculate the 95% confidence limit range like earlier, i.e. the Estimate +/- 2*Std.Error
+
+```{r 11, warning=FALSE}
+coef.mtcars <- as.data.frame(coef(summary(model.mtcars3)))
+coef.mtcars$confintfrom <- coef.mtcars$Estimate - (2*coef.mtcars$`Std. Error`)
+coef.mtcars$confintto <- coef.mtcars$Estimate + (2*coef.mtcars$`Std. Error`)
+coef.mtcars[,c(1,2,4,5,6)]
+```
+
+Model interpretation
+
+-wt is the most significant predictor, though negative. 1 unit (1000 lbs) increase in the weight
+of the vehicle (keeping other variables constant) reduces the mpg by about 3.92 miles/gallon on an average. We expect the actual reduction to range between 5.33 miles/gallon and 2.49 miles/gallon (for every 1000 lbs increase in weight) 95% of the time, as defined by the confidence interval.
+
+-qsec comes next and is positively correlated with mpg. qsec here is the time in seconds it takes for the car to go from a stop to complete a quarter mile. So, as per our model, a one second increaes in qsec (keeping other variables constant) increases the mpg by 1.22 miles/gallon on an average. We expect the actual increase in mpg to range between 0.65 miles/gallon and 1.8 miles/gallon 95% of the time, as defined by the confidence interval.
+
+-am is the least signficant of the three. Being a categorical variable, instead of a unit change, the interpretion is based on the choice of manual mode when compared to automatic mode, other variables remaining constant. So the manual mode of the transmission (compared to auto mode) increases the mpg by 2.93 miles/gallon on an average. We expect the actual increase to range from 0.11 miles/gallon to 5.75 miles/gallon 95% of the time based on the confidence interval.
+
+-interface here cannot be interpreted easily. In some cases the interface represents the value of the dependent variable when all predictors are zero. However, in this case  wt/qsec cannot be zero for any car. Also, we have a categorical variable (am) in the fray. If there was only this one categorical variable, the interface would have represented the baseline class (automatic transmission). However, with continuous as well as categorical predictors in the model, interface is an undecipherable mix and best not interpreted further. 
+
+Another interesting thing to do would be using anova to compare the initial model (with only am as predictor) with this final model to see if the increase in r-squared is statistically signficant or not.
+
+```{r 12, warning=FALSE}
+anova(model.mtcars1, model.mtcars3)
+```
+
+It's evident that by adding another two predictors (wt & qsec) to the final model, the increase in r-squared is statistically signficant. 
+
+## Figures
+
+Fig 1 - Pair wise scatter plot of the columns in the dataset
+
+
+```{r f1, echo=FALSE, warning=FALSE, message=FALSE}
+mtcarsvar <- mtcars[,c(1,6,7,9)] 
+g = ggpairs(mtcarsvar, lower = list(continuous = wrap("smooth", method = "loess")))
+g
+```
+
+Fig 2 - Scatter plot of mpg vs am
+```{r f2, echo=FALSE, warning=FALSE, message=FALSE}
+plot(mtcars$am, mtcars$mpg)
+```
+
+Fig 3 - Diagnostic Plots
+```{r f3, echo=FALSE, warning=FALSE, message=FALSE}
+par(mfrow=c(2,2))
+plot(model.mtcars3)
+```
+
+First Plot - Residuals vs fitted values - for checking linearity/homoscedasticity.
+Most of the points here are within [-2,2] so linearity is confirmed. Crysler Imperial,
+Fiat128 and Totoyota Corolla are called out as outliers though. Also, there is no pattern to the residuals which confirms homoscedasticity (constant variance)
+
+Second Plot - QQ Plot for normality assumption - since observations lie along the 45 degree
+line, normality holds here
+
+Third Plot - Scale location - for checking homoscedasticity. We don't see a strong pattern
+here though there is a hint of linearity. 
+
+Fourth Plot - Cook's distance to measure the influence of each observation on the regression
+coefficients. We do see a few observations outside [-1,1] -- Chrysler Imperial, Fiat128 and Merc230 are called out here. Ideally these would require further investigation. 
+
